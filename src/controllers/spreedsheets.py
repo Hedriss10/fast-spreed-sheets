@@ -1,12 +1,12 @@
-from typing import List, Literal
-from pandas import read_csv, read_excel, read_json, DataFrame
+import pandas as pd
 from os import path
+from typing import List, Literal
 import chardet
 
 
 class SpreadSheets:
     def __init__(
-        self, file_path: path, file_type: Literal["csv", "xlsx", "json"], sheet_name: str = None, columns: List[str] = None
+        self, file_path: str, file_type: Literal["csv", "xlsx"], sheet_name: str = None, columns: List[str] = None
     ) -> None:
         self.file_path = file_path
         self.file_type = file_type
@@ -16,100 +16,116 @@ class SpreadSheets:
 
     def detect_encoding(self) -> str:
         """
-        Detects the encoding of the file to avoid decoding issues.
-        
-        Returns:
-            str: The detected encoding.
+        Detects the file encoding using chardet.
+        Provides a fallback to 'latin1' if detection fails.
         """
-        with open(self.file_path, "rb") as file:
-            result = chardet.detect(file.read())
-            return result.get("encoding", "utf-8")
+        try:
+            with open(self.file_path, "rb") as file:
+                result = chardet.detect(file.read())
+                return result.get("encoding", "utf-8")
+        except Exception as e:
+            print(f"Warning: Unable to detect encoding, defaulting to 'latin1'. Error: {e}")
+            return "latin1"
 
-    def read_file(self) -> DataFrame:
+    def read_file(self) -> pd.DataFrame:
         """
-        Reads a file based on its type and handles encoding and format issues.
-        
-        Returns:
-            DataFrame: The loaded data.
+        Reads the file based on its type and returns it as a DataFrame.
         """
         try:
             encoding = self.detect_encoding()
+
             if self.file_type == "csv":
-                return read_csv(self.file_path, usecols=self.columns, dtype=str, sep=";", encoding=encoding)
+                data = pd.read_csv(self.file_path, usecols=self.columns or None, dtype=str, sep=";", encoding=encoding)
+
             elif self.file_type == "xlsx":
-                return read_excel(self.file_path, sheet_name=self.sheet_name, usecols=self.columns, dtype=str)
-            elif self.file_type == "json":
-                return read_json(self.file_path, encoding=encoding)
+                data = pd.read_excel(self.file_path, sheet_name=None, usecols=self.columns or None, dtype=str)
+
+                if self.sheet_name is None:
+                    self.sheet_name = list(data.keys())[0]
+                
+                data = data.get(self.sheet_name, None)
+                if data is None:
+                    raise ValueError(f"Sheet '{self.sheet_name}' not found in the Excel file.")
+
             else:
                 raise ValueError(f"Unsupported file type: {self.file_type}")
+            
+            if not isinstance(data, pd.DataFrame):
+                raise TypeError(f"Expected a DataFrame, but got {type(data)} instead.")
+            
+            return data
+
         except Exception as e:
             raise Exception(f"Error while reading the file: {e}")
 
-    def load_data(self) -> DataFrame:
+    def load_data(self) -> pd.DataFrame:
         """
-        Loads data from the specified file path and stores it in self.data.
+        Loads data and stores it in self.data.
+        Ensures that data is always a DataFrame.
+        """
+        if self.data is None:
+            self.data = self.read_file()
         
-        Returns:
-            DataFrame: The loaded data.
-        """
-        self.data = self.read_file()
+        if not isinstance(self.data, pd.DataFrame):
+            raise ValueError(f"Expected a DataFrame, but got {type(self.data)} instead.")
+
         return self.data
 
-    def handle_missing_data(self, drop: bool = True) -> DataFrame:
+    def generic_reports(self) -> pd.DataFrame:
         """
-        Checks for missing data and optionally removes rows with missing values.
-        
-        Args:
-            drop (bool): If True, removes rows with missing values in the specified columns.
-        
-        Returns:
-            DataFrame: Processed DataFrame.
+        Generates a report of missing data counts for the DataFrame.
         """
         try:
             df = self.load_data()
-            if not isinstance(df, DataFrame):
-                raise TypeError("The loaded data is not a DataFrame.")
-            
+            count_lines_missing = df.isnull().sum()
+            print("Missing values per column:")
+            print(count_lines_missing)
+            return count_lines_missing
+        except Exception as e:
+            raise Exception(f"Error generating generic report: {e}")
+
+    def handle_missing_data(self, drop: bool = True) -> pd.DataFrame:
+        """
+        Handles missing data in the DataFrame, optionally dropping rows with missing values.
+        """
+        try:
+            df = self.load_data()
+
             if self.columns:
                 missing_columns = [col for col in self.columns if col not in df.columns]
                 if missing_columns:
-                    raise ValueError(f"The columns {missing_columns} were not found in the file.")
+                    raise ValueError(f"Missing columns in the file: {missing_columns}")
 
             if drop:
                 df = df.dropna(subset=self.columns)
-                self.save_data(df)
+                
+            print("Data after handling missing values:")
+            self.save_data(df)
             return df
         except Exception as e:
             raise Exception(f"Error while handling missing data: {e}")
 
-    def save_data(self, data: DataFrame) -> None:
+    def save_data(self, data: pd.DataFrame) -> None:
         """
-        Saves the processed data back to the file.
-        
-        Args:
-            data (DataFrame): The DataFrame to save.
+        Saves the DataFrame back to the file.
         """
         try:
             if self.file_type == "csv":
                 data.to_csv(self.file_path, index=False, sep=";")
             elif self.file_type == "xlsx":
                 data.to_excel(self.file_path, sheet_name=self.sheet_name, index=False)
-            elif self.file_type == "json":
-                data.to_json(self.file_path, orient="records")
             else:
                 raise ValueError(f"Unsupported file type: {self.file_type}")
+            print("Data saved successfully.")
         except Exception as e:
             raise Exception(f"Error while saving the file: {e}")
 
 
-# Example usage
 if __name__ == "__main__":
-    file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/database/generic_report.xlsx"
-    columns = ["CPF", "Name", "Phone"]
+    file_path = "..."
+    columns = ["CPF", "id_convenio"]
 
-    spreadsheet = SpreadSheets(file_path, file_type="csv", columns=columns)
-    try:
-        processed_data = spreadsheet.handle_missing_data(drop=False)
-        print(processed_data)
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    spreadsheet = SpreadSheets(file_path, file_type="xlsx", columns=columns)
+    df = spreadsheet.load_data()
+    generic_reports = spreadsheet.generic_reports()
+    # handle_missing_data = spreadsheet.handle_missing_data(drop=False)

@@ -1,6 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,flask,django,circuitpython,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,flask,django,circuitpython,macos
 
+## ignore database
+database/
+.database
+
 ### CircuitPython ###
 .Trashes
 .metadata_never_index
