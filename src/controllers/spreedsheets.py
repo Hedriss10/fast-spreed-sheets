@@ -10,7 +10,7 @@ class SpreadSheets:
         self.file_type = file_type
         self.sheet_name = sheet_name
         self.columns = columns
-
+    
     def read(self) -> DataFrame:
         """
         Reads data from the specified file path based on the file type.
@@ -21,10 +21,11 @@ class SpreadSheets:
         if self.file_type == "csv":
             self.data = read_csv(self.file_path, usecols=self.columns, dtype=str, sep=";")
         elif self.file_type == "xlsx":
-            self.data = read_excel(self.file_path, sheet_name=self.sheet_name, usecols=self.columns, dtype=str)
+            self.data = read_excel(self.file_path, sheet_name=self.sheet_name, usecols=self.columns, dtype=str, engine="openpyxl")
         else:
             raise Exception("Invalid file type")
         return self.data
+    
 
     def write(self, data: DataFrame) -> None:
         """
@@ -49,6 +50,7 @@ class SpreadSheets:
         """
         self.data = self.read()
         return self.data
+    
 
     def handle_missing_data(self, drop: bool = True) -> DataFrame:
         """
@@ -85,10 +87,11 @@ class SpreadSheets:
 
 
 if __name__ == "__main__":
-    file_path = "data.csv"
-    columns = ["CPF", "Name", "Phone"]
-
-    spreadsheet = SpreadSheets(file_path, file_type="csv", columns=columns)
+    file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/database/generic_report.xlsx"
+    # columns = ["CPF", "Name", "Phone"]
+    columns = ['CPF', 'id_convenio']
+    
+    spreadsheet = SpreadSheets(file_path, file_type="xlsx", columns=columns)
 
     processed_data = spreadsheet.handle_missing_data(drop=True)
 
