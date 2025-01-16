@@ -1,3 +1,4 @@
+chardet==5.2.0
 et_xmlfile==2.0.0
 numpy==2.2.1
 openpyxl==3.1.5
