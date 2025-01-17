@@ -1,7 +1,8 @@
 import pandas as pd
+import chardet
 from os import path
 from typing import List, Literal
-import chardet
+from datapaths import ManagePathDatabaseFiles
 
 
 class SpreadSheets:
@@ -22,7 +23,10 @@ class SpreadSheets:
         try:
             with open(self.file_path, "rb") as file:
                 result = chardet.detect(file.read())
-                return result.get("encoding", "utf-8")
+                encoding = result.get("encoding") or "latin1"
+                return encoding
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"File not found: {self.file_path}. Error: {e}")
         except Exception as e:
             print(f"Warning: Unable to detect encoding, defaulting to 'latin1'. Error: {e}")
             return "latin1"
@@ -71,16 +75,15 @@ class SpreadSheets:
 
         return self.data
 
-    def generic_reports(self) -> pd.DataFrame:
+    def generic_reports(self) -> dict:
         """
         Generates a report of missing data counts for the DataFrame.
         """
         try:
             df = self.load_data()
             count_lines_missing = df.isnull().sum()
-            print("Missing values per column:")
-            print(count_lines_missing)
-            return count_lines_missing
+            dict = count_lines_missing.to_dict()
+            return dict
         except Exception as e:
             raise Exception(f"Error generating generic report: {e}")
 
@@ -122,10 +125,22 @@ class SpreadSheets:
 
 
 if __name__ == "__main__":
-    file_path = "..."
-    columns = ["CPF", "id_convenio"]
+    file_paths = ManagePathDatabaseFiles().list_files_database()
 
-    spreadsheet = SpreadSheets(file_path, file_type="xlsx", columns=columns)
-    df = spreadsheet.load_data()
-    generic_reports = spreadsheet.generic_reports()
-    # handle_missing_data = spreadsheet.handle_missing_data(drop=False)
+    if not file_paths or not isinstance(file_paths, list):
+        raise ValueError("Nenhum arquivo encontrado ou caminhos inválidos.")
+
+    for file_path in file_paths:
+        try:
+            print(f"Processando o arquivo: {file_path}")
+            
+            file_type = "xlsx" if file_path.endswith(".xlsx") else "csv"
+            columns = ["CPF", "id_convenio"]
+
+            spreadsheet = SpreadSheets(file_path=file_path, file_type=file_type, columns=columns)
+
+            df = spreadsheet.load_data()
+            generic_reports = spreadsheet.generic_reports()
+            handle_missing_data = spreadsheet.handle_missing_data(drop=True)
+        except Exception as e:
+            print(f"Erro ao processar o arquivo {file_path}: {e}")
