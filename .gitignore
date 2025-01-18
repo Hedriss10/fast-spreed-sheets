@@ -3,6 +3,10 @@
 
 data
 
+## ignore output
+output.
+output/
+
 ## ignore database
 database/
 .database
