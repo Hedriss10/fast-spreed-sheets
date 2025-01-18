@@ -1,8 +1,7 @@
+# src/models/etl.py
 from models import (TablesProcessing, 
                     ModelsProcessing, 
                     DataProcessing)
-
-
 
 class ETL:
     def __init__(self, tables_processing: TablesProcessing, models_processing: ModelsProcessing, data_processing: DataProcessing) -> None:

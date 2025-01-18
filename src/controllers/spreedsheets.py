@@ -1,3 +1,5 @@
+# src/controllers/spreedsheets.py
+import os
 import pandas as pd
 import chardet
 from os import path
@@ -87,6 +89,83 @@ class SpreadSheets:
         except Exception as e:
             raise Exception(f"Error generating generic report: {e}")
 
+    def search_columns_data(self, search_columns: str, questions_columns: list, df2: pd.DataFrame) -> pd.DataFrame:
+        """
+        Search for specific columns in two DataFrames based on a common column (e.g., phone numbers)
+        and returns the intersection, including only the specified columns in `questions_columns`.
+
+        Args:
+            search_columns (str): The column name to use for intersection (e.g., phone number).
+            questions_columns (list): List of columns to include in the result.
+            df1 (pd.DataFrame): The first DataFrame.
+        Returns:
+            pd.DataFrame: A DataFrame containing the intersection and specified columns.
+        """
+        try:
+            if not isinstance(questions_columns, list):
+                raise ValueError("questions_columns must be a list of column names.")
+
+            intersection = self.load_data().merge(df2, how="inner", on=search_columns)
+            result = intersection[questions_columns]
+            return result, intersection
+
+        except Exception as e:
+            raise Exception(f"Error while searching for columns: {e}")
+
+    def remove_lines_data(
+        self,
+        chunk_size: int,
+        data: pd.DataFrame,
+        output_path: str,
+        file_prefix: str = "chunk",
+        encoding: str = "utf-8",
+        sep: str = ";",
+        index: bool = False,
+        file_type: str = "csv"
+    ) -> list:
+        """
+        Splits a DataFrame into smaller chunks with a specified number of rows and saves them as separate files.
+
+        Args:
+            chunk_size (int): The number of rows per chunk.
+            data (pd.DataFrame): The input DataFrame.
+            output_path (str): Directory where the chunks will be saved.
+            file_prefix (str): Prefix for the output file names (default is "chunk").
+            encoding (str): Encoding for the output files (default is "utf-8").
+            sep (str): Separator for the output files (default is ";").
+            index (bool): Whether to include the index in the output files (default is False).
+            file_type (str): Type of the output files ("csv" or "txt", default is "csv").
+
+        Returns:
+            list: A list of file paths where the chunks were saved.
+        """
+        try:
+            if data.empty:
+                raise ValueError("The input DataFrame is empty.")
+
+            os.makedirs(output_path, exist_ok=True)
+
+            file_paths = []
+
+            for i in range(0, len(data), chunk_size):
+                chunk = data.iloc[i:i + chunk_size]
+                file_name = f"{file_prefix}_{i // chunk_size + 1}.{file_type}"
+                file_path = f"{output_path}/{file_name}"
+
+                if file_type == "csv":
+                    chunk.to_csv(file_path, index=index, sep=sep, encoding=encoding)
+                elif file_type == "txt":
+                    chunk.to_csv(file_path, index=index, sep=sep, encoding=encoding, header=False)
+                else:
+                    raise ValueError(f"Unsupported file type: {file_type}")
+
+                file_paths.append(file_path)
+
+            return file_paths
+
+        except Exception as e:
+            raise Exception(f"Error while splitting and saving DataFrame into chunks: {e}")
+
     def handle_missing_data(self, drop: bool = True) -> pd.DataFrame:
         """
         Handles missing data in the DataFrame, optionally dropping rows with missing values.
@@ -137,10 +216,16 @@ if __name__ == "__main__":
             file_type = "xlsx" if file_path.endswith(".xlsx") else "csv"
             columns = ["CPF", "id_convenio"]
 
+            search_columns = "phone"
+            questions_columns = ["phone", "name", "email", "address", "city"]
+
             spreadsheet = SpreadSheets(file_path=file_path, file_type=file_type, columns=columns)
 
             df = spreadsheet.load_data()
-            generic_reports = spreadsheet.generic_reports()
-            handle_missing_data = spreadsheet.handle_missing_data(drop=True)
+            # generic_reports = spreadsheet.generic_reports()
+            # handle_missing_data = spreadsheet.handle_missing_data(drop=True)
+            separate_chunks = spreadsheet.remove_lines_data(chunk_size=1000, data=df, output_path="output", file_prefix="chunk", encoding="utf-8", sep=";", index=False, file_type="csv")
+            # serch_columns = spreadsheet.search_columns_data(df1=df1, df2=df2, search_columns=search_columns, questions_columns=questions_columns)
+            
         except Exception as e:
             print(f"Erro ao processar o arquivo {file_path}: {e}")
