@@ -40,7 +40,7 @@ class SpreadSheets:
             encoding = self.detect_encoding()
 
             if self.file_type == "csv":
-                data = pd.read_csv(self.file_path, usecols=self.columns or None, dtype=str, sep=";", encoding=encoding)
+                data = pd.read_csv(self.file_path, usecols=self.columns or None, dtype=str, sep=",", encoding=encoding)
 
             elif self.file_type == "xlsx":
                 data = pd.read_excel(self.file_path, sheet_name=None, usecols=self.columns or None, dtype=str)

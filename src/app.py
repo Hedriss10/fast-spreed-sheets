@@ -96,7 +96,12 @@ class App:
 
         try:
             st.warning("Cuidado ao importar o arquivo!")
-            inner_file = st.file_uploader("Envie seu arquivo CSV ou XLSX", type=["csv", "xlsx"])
+            
+            inner_file = st.file_uploader(
+                "Envie seu arquivo CSV ou XLSX para unir tabelas", 
+                type=["csv", "xlsx"], 
+                key="inner_file"
+            )
             
             if not uploaded_file:
                 st.warning("Envie o arquivo principal para começar.")
@@ -116,7 +121,7 @@ class App:
             questions_columns = [col.strip() for col in _questions_columns.split(",")]
 
             if not inner_file:
-                st.warning("Envie o segundo arquivo para realizar o join.")
+                st.warning("Envie o segundo arquivo para realizar a união.")
                 return
             
             inner_file_type = "xlsx" if inner_file.name.endswith(".xlsx") else "csv"
@@ -129,12 +134,12 @@ class App:
                 df2=df2
             )
 
-            st.write("Resultado do Inner Join:")
+            st.write("Resultado:")
             st.dataframe(result_df)
 
-            output_path = "resultado.csv"
-            result_df.to_csv(output_path, index=False)
-
+            output_path = f"{ManagePathDatabaseFiles().save_path_data()}/resultado.csv"
+            result_df.to_csv(output_path, index=False, sep=";")
+            
             with open(output_path, "rb") as file:
                 st.download_button(
                     label=f"Baixar {os.path.basename(output_path)}",
