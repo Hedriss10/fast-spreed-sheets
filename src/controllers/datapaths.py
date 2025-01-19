@@ -5,13 +5,20 @@ class ManagePathDatabaseFiles:
     def __init__(self):
         self.data_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
         self.trash_path = os.path.join(self.data_path, "trash")
+        self.output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
 
         os.makedirs(self.data_path, exist_ok=True)
         os.makedirs(self.trash_path, exist_ok=True)
 
+    def save_path_data(self):
+        """
+        Save the paths to the data and trash directories.
+        """
+        return self.data_path
+
     def list_files_database(self):
         """
-        Lista os arquivos disponíveis no diretório "data" que têm extensão .xlsx ou .csv.
+        List all .xlsx and .csv files in the "data" directory.
         """
         try:
             files = [
@@ -54,8 +61,3 @@ class ManagePathDatabaseFiles:
                 print(f"Arquivo movido para a lixeira: {file}")
         except Exception as e:
             print(f"Erro ao mover arquivos para a lixeira: {e}")
-
-if __name__ == "__main__":
-    list_path_files = ManagePathDatabaseFiles()
-    list_path_files.list_files_database()
-    list_path_files.move_trash_files(move_trash=True)

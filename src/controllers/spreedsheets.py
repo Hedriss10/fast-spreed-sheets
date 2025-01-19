@@ -4,7 +4,6 @@ import pandas as pd
 import chardet
 from os import path
 from typing import List, Literal
-from datapaths import ManagePathDatabaseFiles
 
 
 class SpreadSheets:
@@ -107,7 +106,7 @@ class SpreadSheets:
 
             intersection = self.load_data().merge(df2, how="inner", on=search_columns)
             result = intersection[questions_columns]
-            return result, intersection
+            return result
 
         except Exception as e:
             raise Exception(f"Error while searching for columns: {e}")
@@ -179,10 +178,9 @@ class SpreadSheets:
                     raise ValueError(f"Missing columns in the file: {missing_columns}")
 
             if drop:
-                df = df.dropna(subset=self.columns)
-                
+                df = df.dropna(subset=self.columns)                
             print("Data after handling missing values:")
-            self.save_data(df)
+
             return df
         except Exception as e:
             raise Exception(f"Error while handling missing data: {e}")
@@ -203,29 +201,29 @@ class SpreadSheets:
             raise Exception(f"Error while saving the file: {e}")
 
 
-if __name__ == "__main__":
-    file_paths = ManagePathDatabaseFiles().list_files_database()
+# if __name__ == "__main__":
+#     file_paths = ManagePathDatabaseFiles().list_files_database()
 
-    if not file_paths or not isinstance(file_paths, list):
-        raise ValueError("Nenhum arquivo encontrado ou caminhos inválidos.")
+#     if not file_paths or not isinstance(file_paths, list):
+#         raise ValueError("Nenhum arquivo encontrado ou caminhos inválidos.")
 
-    for file_path in file_paths:
-        try:
-            print(f"Processando o arquivo: {file_path}")
+#     for file_path in file_paths:
+#         try:
+#             print(f"Processando o arquivo: {file_path}")
             
-            file_type = "xlsx" if file_path.endswith(".xlsx") else "csv"
-            columns = ["CPF", "id_convenio"]
+#             file_type = "xlsx" if file_path.endswith(".xlsx") else "csv"
+#             columns = ["CPF", "id_convenio"]
 
-            search_columns = "phone"
-            questions_columns = ["phone", "name", "email", "address", "city"]
+#             search_columns = "phone"
+#             questions_columns = ["phone", "name", "email", "address", "city"]
 
-            spreadsheet = SpreadSheets(file_path=file_path, file_type=file_type, columns=columns)
+#             spreadsheet = SpreadSheets(file_path=file_path, file_type=file_type, columns=columns)
 
-            df = spreadsheet.load_data()
-            # generic_reports = spreadsheet.generic_reports()
-            # handle_missing_data = spreadsheet.handle_missing_data(drop=True)
-            separate_chunks = spreadsheet.remove_lines_data(chunk_size=1000, data=df, output_path="output", file_prefix="chunk", encoding="utf-8", sep=";", index=False, file_type="csv")
-            # serch_columns = spreadsheet.search_columns_data(df1=df1, df2=df2, search_columns=search_columns, questions_columns=questions_columns)
+#             df = spreadsheet.load_data()
+#             # generic_reports = spreadsheet.generic_reports()
+#             handle_missing_data = spreadsheet.handle_missing_data(drop=True)
+#             separate_chunks = spreadsheet.remove_lines_data(chunk_size=1000, data=df, output_path="output", file_prefix="chunk", encoding="utf-8", sep=";", index=False, file_type="csv")
+#             # serch_columns = spreadsheet.search_columns_data(df1=df1, df2=df2, search_columns=search_columns, questions_columns=questions_columns)
             
-        except Exception as e:
-            print(f"Erro ao processar o arquivo {file_path}: {e}")
+#         except Exception as e:
+#             print(f"Erro ao processar o arquivo {file_path}: {e}")
