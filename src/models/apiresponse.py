@@ -1,7 +1,18 @@
+import os
 from sqlalchemy import create_engine, Column, Integer, String, Float, JSON, TIMESTAMP, func
 from sqlalchemy.orm import DeclarativeBase
 from controllers.datapaths import ManagePathDatabaseFiles
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# DBHOST = os.getenv("DBHOST")
+# DBPORT = os.getenv("DBPORT")
+# DATABASE = os.getenv("DATABASE")
+# USERNAME = os.getenv("USERNAME")
+# PASSWORD = os.getenv("DBPASSWORD")
+
+# DATABASE_URL = f"postgresql://{USERNAME}:{PASSWORD}@{DBHOST}:{DBPORT}/{DATABASE}"
 DATABASE_URL = f"sqlite:///{ManagePathDatabaseFiles().save_path_data()}/batch_processing.db"
 
 class Base(DeclarativeBase):
@@ -9,6 +20,7 @@ class Base(DeclarativeBase):
 
 class APIResponse(Base):
     __tablename__ = 'api_responses'
+    # __table_args__ = {'schema': 'spreed_sheets'}
     id = Column(Integer, primary_key=True)
     cpf = Column(String(11), nullable=False)
     nome = Column(String(100))

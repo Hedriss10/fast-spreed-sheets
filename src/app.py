@@ -1,8 +1,10 @@
+import pandas as pd
 import os
 import streamlit as st
 import shutil
 from controllers.spreedsheets import SpreadSheets
 from controllers.datapaths import ManagePathDatabaseFiles
+from botmaster import BankerMaster
 
 class App:
     def __init__(self):
@@ -192,6 +194,65 @@ class App:
             if not uploaded_file:
                 st.warning("Envie um arquivo para começar.")
                 return
+            
+            actions = [
+                "Escolha uma opção",
+                "Extração de dados do banco master",
+                "Coleta de dados"
+            ]
+            selected_action = st.selectbox("Selecione uma opção:", actions)
+
+            if selected_action == "Extração de dados do banco master":
+                st.write("Selecione a coluna do telefone,")
+                phone = st.text_input("Coluna do telefone:")
+                
+                if uploaded_file.type == "text/csv":
+                    df = pd.read_csv(uploaded_file, sep=";")
+                elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                    df = pd.read_excel(uploaded_file)
+
+                st.dataframe(df.head())
+                
+                banker_master = BankerMaster(phone_columns=phone)
+                banker_master.cheks_response_status()
+                banker_master.extract_transform_load_users(
+                    file_content=uploaded_file.getvalue(),
+                    credit=5000, 
+                    max_threads=10,
+                    file_type=uploaded_file.type.split("/")[-1],
+                )
+                
+            elif selected_action ==  "Coleta de dados":
+                banker_master = BankerMaster(phone_columns="")
+                banker_master.cheks_response_status()
+                banker_master.extract_data_database()
+                st.dataframe(banker_master.extract_data_database())
+                value = st.text_input("Valor:")
+                column = st.text_input("Qual coluna deseja filtrar?")
+                type_filter = st.text_input("Selecione o tipo do filtro? ... Exemplo=[> , == , < , !=]")
+                
+                if value and column and type_filter:
+                    dt = banker_master.extract_data_database(filter_column=column, filter_operator=type_filter, filter_value=int(value))
+                    st.write("Resultado:")
+
+                    output_path = f"{ManagePathDatabaseFiles().save_path_data()}/extract_values.csv"
+                    dt.to_csv(output_path, index=False, sep=";")
+                    
+                    with open(output_path, "rb") as file:
+                        st.download_button(
+                            label=f"Baixar {os.path.basename(output_path)}",
+                            data=file,
+                            file_name=os.path.basename(output_path),
+                            mime="text/csv"
+                        )
+
+                    if st.button("Apagar arquivos gerados"):
+                        try:
+                            ManagePathDatabaseFiles().move_trash_files(move_trash=True)
+                            st.success("Arquivos apagados com sucesso!")
+                        except Exception as e:
+                            st.error(f"Erro ao apagar arquivos: {e}")
+
 
         except Exception as e:
             st.write(f"Error: {e}")

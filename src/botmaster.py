@@ -1,3 +1,4 @@
+import io
 import os
 import pandas as pd
 import requests
@@ -13,7 +14,7 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+load_dotenv()
 
 class BankerMaster:
     def __init__(self, phone_columns):
@@ -115,7 +116,7 @@ class BankerMaster:
         finally:
             session.close()
 
-    def extract_transform_load_users(self, file_path, credit, max_threads=5):
+    def extract_transform_load_users(self, file_type, file_content, credit, max_threads=5):
         """
         Extracts, transforms, and loads user data using threading and saves directly to the database.
         """
@@ -125,13 +126,14 @@ class BankerMaster:
 
         try:
             # Load file
-            if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, sep=";", dtype="object")
-            elif file_path.endswith('.xlsx'):
-                df = pd.read_excel(file_path, dtype="object")
+            if file_type == 'csv':
+                df = pd.read_csv(io.StringIO(file_content), sep=",", dtype="object")
+            elif file_type == 'xlsx':
+                df = pd.read_excel(io.BytesIO(file_content), dtype="object")
             else:
-                print("Please provide a valid CSV or XLSX file.")
+                print("Por favor, forneça um arquivo CSV ou XLSX válido.")
                 return
+
 
             df["CPF"] = df["CPF"].str.replace(r"[^\d]", "", regex=True)
 
@@ -153,20 +155,41 @@ class BankerMaster:
         except Exception as e:
             print(f"Error processing file: {e}")
 
-    def extract_data_database(self, filter_values=None):
-        # todo falta realizar o filtro
+    def simulator_values(self):
+        ## todo falta implementar
+        # mock payload
+        paylaod = {
+            "cpf": "164.247.602-10",
+            "idConvenio": "184",
+            "matricula": "0847163"
+        }
+        url = f"{self.base_url}/consignado/v1/simulacao"
+        print("url", url)
+        response = requests.post(url, headers=self.auth_headers(), json=paylaod)
+        print(response.json())
+        # return response
+
+    def simulator_values_batch(self,): 
+        # todo falta implementar
+        ...
+
+    def extract_data_database(self, filter_column=None, filter_operator=None, filter_value=None):
         try:
             session = Session()
             data = session.query(APIResponse).all()
-
             data_dict = [record.__dict__ for record in data]
             
             for record in data_dict:
                 record.pop('_sa_instance_state', None)
 
             df = pd.DataFrame(data_dict)
-            
-            print("Preview data from database:")
+
+            if filter_column and filter_operator and filter_value is not None:
+                if filter_operator in ['>', '<', '>=', '<=', '==', '!=']:
+                    df = df.query(f"{filter_column} {filter_operator} @filter_value")
+                else:
+                    print(f"Operador inválido: {filter_operator}")
+
             print(df.head())
             
             session.close()
@@ -174,7 +197,6 @@ class BankerMaster:
 
         except Exception as e:
             print(f"Error processing file: {e}")
-            
 
 if __name__ == "__main__":
     file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/explore_analyze.csv"
