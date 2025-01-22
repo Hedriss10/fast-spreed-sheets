@@ -5,6 +5,7 @@ import shutil
 from controllers.spreedsheets import SpreadSheets
 from controllers.datapaths import ManagePathDatabaseFiles
 from botmaster import BankerMaster
+from datetime import datetime
 
 class App:
     def __init__(self):
@@ -205,22 +206,26 @@ class App:
             if selected_action == "Extração de dados do banco master":
                 st.write("Selecione a coluna do telefone,")
                 phone = st.text_input("Coluna do telefone:")
-                
+
                 if uploaded_file.type == "text/csv":
                     df = pd.read_csv(uploaded_file, sep=";")
+                    file_content = uploaded_file.getvalue().decode("utf-8")
                 elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
                     df = pd.read_excel(uploaded_file)
-
+                    file_content = uploaded_file.getvalue()
+                
                 st.dataframe(df.head())
                 
-                banker_master = BankerMaster(phone_columns=phone)
-                banker_master.cheks_response_status()
-                banker_master.extract_transform_load_users(
-                    file_content=uploaded_file.getvalue(),
-                    credit=5000, 
-                    max_threads=10,
-                    file_type=uploaded_file.type.split("/")[-1],
-                )
+                if st.button("Start"):
+                    banker_master = BankerMaster(phone_columns=phone)
+                    banker_master.cheks_response_status()
+                    banker_master.extract_transform_load_users(
+                        file_content=file_content,
+                        credit=5000, 
+                        max_threads=10,
+                        file_type=uploaded_file.type.split("/")[-1],
+                    )
+                    st.success("Extração de dados realizada com sucesso!")
                 
             elif selected_action ==  "Coleta de dados":
                 banker_master = BankerMaster(phone_columns="")

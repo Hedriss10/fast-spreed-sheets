@@ -2,12 +2,15 @@ import io
 import os
 import pandas as pd
 import requests
+import time
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from models.apiresponse import APIResponse, Base, DATABASE_URL
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
+from datetime import datetime
+
 
 engine = create_engine(DATABASE_URL)
 Base.metadata.create_all(engine)
@@ -71,6 +74,7 @@ class BankerMaster:
 
                 if response.status_code == 200:
                     response_json = response.json()
+                    print(response_json[0]["nome"])
                     if isinstance(response_json, list) and response_json:
                         for entry in response_json:
                             # Prepare the data to save
@@ -116,7 +120,7 @@ class BankerMaster:
         finally:
             session.close()
 
-    def extract_transform_load_users(self, file_type, file_content, credit, max_threads=5):
+    def extract_transform_load_users(self, file_type, file_content, credit, max_threads=10, start_time=7, end_time=20):
         """
         Extracts, transforms, and loads user data using threading and saves directly to the database.
         """
@@ -125,20 +129,32 @@ class BankerMaster:
             return
 
         try:
-            # Load file
+            current_hour = datetime.now().hour
+            print(f"HORA COLETADA {current_hour}")
+            
+            if start_time <= current_hour < end_time:
+                max_requests_per_minute = 100
+            else:
+                max_requests_per_minute = 2000
+
+            max_threads = max_requests_per_minute
+            print(f"Max threads: {max_threads}")
+
             if file_type == 'csv':
-                df = pd.read_csv(io.StringIO(file_content), sep=",", dtype="object")
+                df = pd.read_csv(io.StringIO(file_content), sep=";", dtype="object")
             elif file_type == 'xlsx':
                 df = pd.read_excel(io.BytesIO(file_content), dtype="object")
             else:
                 print("Por favor, forneça um arquivo CSV ou XLSX válido.")
                 return
 
-
             df["CPF"] = df["CPF"].str.replace(r"[^\d]", "", regex=True)
 
             total_rows = len(df)
             batches = [df.iloc[i:i + credit] for i in range(0, total_rows, credit)]
+
+            start_time = time.time()
+            requests_made = 0
 
             with ThreadPoolExecutor(max_threads) as executor:
                 futures = {
@@ -149,8 +165,18 @@ class BankerMaster:
                     batch_number = futures[future]
                     try:
                         future.result()
+                        requests_made += 1
                     except Exception as e:
                         print(f"Error processing batch {batch_number}: {e}")
+
+                    elapsed_time = time.time() - start_time
+                    if requests_made >= max_requests_per_minute:
+                        if elapsed_time < 60:
+                            time_to_wait = 60 - elapsed_time
+                            print(f"Atingido o limite de {max_requests_per_minute} requisições. Pausando por {time_to_wait:.2f} segundos.")
+                            time.sleep(time_to_wait)
+                        requests_made = 0
+                        start_time = time.time()
 
         except Exception as e:
             print(f"Error processing file: {e}")
@@ -198,9 +224,21 @@ class BankerMaster:
         except Exception as e:
             print(f"Error processing file: {e}")
 
-if __name__ == "__main__":
-    file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/explore_analyze.csv"
-    banker_master = BankerMaster(phone_columns="TELEFONE")
-    banker_master.cheks_response_status()
-    # banker_master.extract_transform_load_users(file_path, credit=5000, max_threads=10)
-    banker_master.extract_data_database()
+# if __name__ == "__main__":
+#     file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/mocks/explore_analyze.csv"
+#     banker_master = BankerMaster(phone_columns="TELEFONE")
+#     banker_master.cheks_response_status()
+#     banker_master.extract_transform_load_users(file_path, credit=5000, max_threads=5)
+#     # banker_master.extract_data_database()
+
+
+
+
+# example de como estava --> extract_transform_load_users
+# if file_path.endswith('.csv'):
+#     df = pd.read_csv(file_path, sep=";", dtype="object")
+# elif file_path.endswith('.xlsx'):
+#     df = pd.read_excel(file_path, dtype="object")
+# else:
+#     print("Please provide a valid CSV or XLSX file.")
+#     return

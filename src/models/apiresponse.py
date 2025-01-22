@@ -1,32 +1,32 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, JSON, TIMESTAMP, func
+from sqlalchemy import create_engine, Column, Integer, String, Float, JSON, TIMESTAMP, func, Boolean
 from sqlalchemy.orm import DeclarativeBase
 from controllers.datapaths import ManagePathDatabaseFiles
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# DBHOST = os.getenv("DBHOST")
-# DBPORT = os.getenv("DBPORT")
-# DATABASE = os.getenv("DATABASE")
-# USERNAME = os.getenv("USERNAME")
-# PASSWORD = os.getenv("DBPASSWORD")
+DBHOST = os.getenv("DBHOST")
+DBPORT = os.getenv("DBPORT")
+DATABASE = os.getenv("DATABASE")
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("DBPASSWORD")
 
-# DATABASE_URL = f"postgresql://{USERNAME}:{PASSWORD}@{DBHOST}:{DBPORT}/{DATABASE}"
-DATABASE_URL = f"sqlite:///{ManagePathDatabaseFiles().save_path_data()}/batch_processing.db"
+DATABASE_URL = f"postgresql://{USERNAME}:{PASSWORD}@{DBHOST}:{DBPORT}/{DATABASE}"
+# DATABASE_URL = f"sqlite:///{ManagePathDatabaseFiles().save_path_data()}/batch_processing.db"
 
 class Base(DeclarativeBase):
     pass
 
 class APIResponse(Base):
     __tablename__ = 'api_responses'
-    # __table_args__ = {'schema': 'spreed_sheets'}
+    __table_args__ = {'schema': 'spreed_sheets'}
     id = Column(Integer, primary_key=True)
-    cpf = Column(String(11), nullable=False)
+    cpf = Column(String(100), nullable=False)
     nome = Column(String(100))
-    phone = Column(String(20))
+    phone = Column(String(100))
     id_convenio = Column(String(50))
-    matricula = Column(String(50))
+    matricula = Column(String(100))
     vl_multiplo_saque = Column(Float)
     limite_utilizado = Column(Float)
     limite_total = Column(Float)
@@ -37,13 +37,13 @@ class APIResponse(Base):
     vl_margem = Column(Float)
     vl_multiplo_compra = Column(Float)
     vl_limite_compra = Column(Float)
-    cd_banco = Column(String(20))
-    cd_agencia = Column(String(20))
-    cd_conta = Column(String(20))
-    nao_perturbe = Column(String(5))
-    saque_complementar = Column(String(5))
+    cd_banco = Column(String(50))  
+    cd_agencia = Column(String(50))  
+    cd_conta = Column(String(50))  
+    nao_perturbe = Column(Boolean) 
+    saque_complementar = Column(Boolean) 
     refinanciamento = Column(JSON, nullable=False)
-    numero_contrato = Column(String(20))
+    numero_contrato = Column(String(100))
     vlMaximoParcelas = Column(Float)
     vlContrato = Column(Float)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
