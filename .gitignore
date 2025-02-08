@@ -1,6 +1,13 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,flask,django,circuitpython,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,flask,django,circuitpython,macos
 
+# ignore docs
+docs
+docs/
+docs.
+
+
+
 # ignore mocks
 mocks.
 mocks/

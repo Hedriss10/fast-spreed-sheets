@@ -1,244 +1,319 @@
-import io
 import os
 import pandas as pd
 import requests
 import time
+
+from tqdm import tqdm
+from src.utils.log import setup_logger
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
-from models.apiresponse import APIResponse, Base, DATABASE_URL
+from sqlalchemy import create_engine, desc
+from src.models.apiresponse import (APIResponse, 
+    Base, DATABASE_URL, Loggger, User, UserFinancialAgreements, ReportGeneric
+)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 from datetime import datetime
 
-
 engine = create_engine(DATABASE_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
-
 load_dotenv()
 
-class BankerMaster:
-    def __init__(self, phone_columns):
-        """
-        Initialize a BankerMaster object.
-        """
-        self.url_token = os.getenv("URL_TOKEN")
-        self.payload_token = {"usuario": os.getenv("USER"), "senha": os.getenv("PASSWORD")}
-        self.response_token = requests.post(url=self.url_token, json=self.payload_token)
-        self.base_url = os.getenv("BASE_URL")
-        self.token = None
-        self.phone_columns = phone_columns
+logger = setup_logger(__name__)
 
-    def cheks_response_status(self):
+class ExtractTransformLoad:
+    
+    def __init__(self, file_type: str, file_content: str):
         """
-        Checks the status code of the token request response.
-        """
-        if self.response_token.status_code == 200:
-            self.token = self.response_token.json()["accessToken"]
-        else:
-            print(f"Error obtaining token. Status code: {self.response_token.status_code}")
-            return None
+        Initialize an ExtractTransformLoad object.
 
-    def auth_headers(self):
+        Args:
+            file_type (str): The type of file. Valid options are 'csv' and 'xlsx'.
+            file_content (str): The content of the file to be processed.
         """
-        Returns the authentication headers containing the Bearer token.
+        self.file_type = file_type
+        self.file_content = file_content
+    
+    def processing_dataframe(self) :
         """
-        if not self.token:
-            print("Token not found. Please check the token request.")
-            return None
-        return {"Authorization": f"Bearer {self.token}", "User-Agent": "ASHER"}
-
-    def process_batch(self, batch_df, batch_number):
+            Processing dataframe capturation `CPF` not in `convenio_id`
+        Args:
+            file_content (_type_): str
+            file_type (_type_): str
         """
-        Processes a single batch of rows from the DataFrame and saves to the database.
-        """
-
         session = Session()
         try:
-            for index, row in batch_df.iterrows():
-                cpf = row["CPF"]
-                id_convenio = row.get("id_convenio", None)
-                phone = row[f'{self.phone_columns}']
-                
-                if not cpf or len(cpf) != 11:
-                    print(f"Invalid CPF at index {index}: {cpf}")
-                    continue
-                if not id_convenio:
-                    print(f"Missing id_convenio for CPF {cpf} at index {index}")
-                    continue
-
-                url = f"{self.base_url}/consignado/v1/limite/consultar/{cpf}/{id_convenio}"
-                response = requests.get(url, headers=self.auth_headers())
-
-                if response.status_code == 200:
-                    response_json = response.json()
-                    print(response_json[0]["nome"])
-                    if isinstance(response_json, list) and response_json:
-                        for entry in response_json:
-                            # Prepare the data to save
-                            api_response = APIResponse(
-                                cpf=entry.get("cpf"),
-                                nome=entry.get("nome"),
-                                phone=phone,
-                                id_convenio=entry.get("idConvenio"),
-                                matricula=entry.get("matricula"),
-                                vl_multiplo_saque=entry.get("vlMultiploSaque"),
-                                limite_utilizado=entry.get("limiteUtilizado"),
-                                limite_total=entry.get("limiteTotal"),
-                                limite_disponivel=entry.get("limiteDisponivel"),
-                                vl_limite_parcela=entry.get("vlLimiteParcela"),
-                                limite_parcela_utilizado=entry.get("limiteParcelaUtilizado"),
-                                limite_parcela_disponivel=entry.get("limiteParcelaDisponivel"),
-                                vl_margem=entry.get("vlMargem"),
-                                vl_multiplo_compra=entry.get("vlMultiploCompra"),
-                                vl_limite_compra=entry.get("vlLimiteCompra"),
-                                cd_banco=entry.get("cdBanco"),
-                                cd_agencia=entry.get("cdAgencia"),
-                                cd_conta=entry.get("cdConta"),
-                                nao_perturbe=entry.get("naoPerturbe"),
-                                saque_complementar=entry.get("saqueComplementar"),
-                                refinanciamento=entry.get("contratoRefinanciamento", {}).get("refinanciamento"),
-                                numero_contrato=entry.get("contratoRefinanciamento", {}).get("numeroContratos"),
-                                vlMaximoParcelas=entry.get("contratoRefinanciamento", {}).get("vlMaximoParcela"),
-                                vlContrato=entry.get("contratoRefinanciamento", {}).get("valor")
-                            )
-                            # Add to session and commit
-                            session.add(api_response)
-                            try:
-                                session.commit()
-                            except IntegrityError as e:
-                                print(f"Error inserting data for CPF {cpf}: {e}")
-                                session.rollback()
-                else:
-                    print(f"Failed to fetch data for CPF {cpf}. Status: {response.status_code}")
-            print(f"Batch {batch_number} processed successfully.")
+            if self.file_type == 'csv':
+                df = pd.read_csv(self.file_content, sep=";", dtype="object")
+            elif self.file_type == 'xlsx':
+                df = pd.read_excel(self.file_content, dtype="object")
+            else:
+                logger.info("Please provide a valid CSV or XLSX file.")
+                return
+            
+            for index, row in tqdm(df.iterrows(), total=len(df)):
+                cpf = row["CPF"].replace(".", "").replace("-", "")
+                user = User(cpf=cpf)
+                session.add(user)
+                session.commit()
+            logger.warning("Successfully saved CPFs to the database.")
         except Exception as e:
-            session.rollback()
-            print(f"Error processing batch {batch_number}: {e}")
+            logger.error(f"Error processing file: {e}", exc_info=True)
         finally:
             session.close()
 
-    def extract_transform_load_users(self, file_type, file_content, credit, max_threads=10, start_time=7, end_time=20):
+    def processing_dataframe_financialagreements(self):
         """
-        Extracts, transforms, and loads user data using threading and saves directly to the database.
+            Processing dataframe capturation `CPF` with `convenio_id`
+        Args:
+            file_content (_type_): str
+            file_type (_type_): str
         """
-        if not self.token:
-            print("Token is not available. Please check the token request.")
-            return
-
+        session = Session()
         try:
-            current_hour = datetime.now().hour
-            print(f"HORA COLETADA {current_hour}")
+            if self.file_type == 'csv':
+                df = pd.read_csv(self.file_content, sep=";", dtype="object")
+            elif self.file_type == 'xlsx':
+                df = pd.read_excel(self.file_content, dtype="object")
+            else:
+                logger.info("Please provide a valid CSV or XLSX file.")
+                return
             
-            if start_time <= current_hour < end_time:
+            for index, row in tqdm(df.iterrows(), total=len(df)):
+                cpf = row["CPF"]
+                id_convenio = row["id_convenio"]
+
+                user = UserFinancialAgreements(cpf=cpf, id_convenio=id_convenio)
+                session.add(user)
+                session.commit()
+
+            logger.warning("Successfully saved CPFs with id_convenio to the database.")
+        except Exception as e:
+            logger.error(f"Error processing file: {e}", exc_info=True)
+        finally:
+            session.close()
+
+class UserAgentsRequests:
+
+    def __init__(self):
+        self.request_count = 0
+        self.last_reset_time = time.time()
+
+    def agente_request(self, url: str, payload: dict, headers: dict, method: str):
+        """
+        Realiza uma requisição HTTP com controle de taxa.
+
+        :param url: URL da requisição.
+        :param payload: Dados a serem enviados na requisição.
+        :param headers: Cabeçalhos da requisição.
+        :param method: Método HTTP (GET, POST, etc.).
+        """
+        try:
+            current_time = datetime.now().time()
+            if current_time >= datetime.strptime('07:00', '%H:%M').time() and current_time <= datetime.strptime('20:00', '%H:%M').time():
                 max_requests_per_minute = 100
             else:
                 max_requests_per_minute = 2000
 
-            max_threads = max_requests_per_minute
-            print(f"Max threads: {max_threads}")
+            if self.request_count >= max_requests_per_minute:
+                elapsed_time = time.time() - self.last_reset_time
+                if elapsed_time < 60:
+                    sleep_time = 60 - elapsed_time
+                    logger.info(f"Rate limit reached. Sleeping for {sleep_time} seconds.")
+                    time.sleep(sleep_time)
+                self.request_count = 0
+                self.last_reset_time = time.time()
 
-            if file_type == 'csv':
-                df = pd.read_csv(io.StringIO(file_content), sep=";", dtype="object")
-            elif file_type == 'xlsx':
-                df = pd.read_excel(io.BytesIO(file_content), dtype="object")
+            response = requests.request(method, url, headers=headers, json=payload)
+            self.request_count += 1
+
+            if response.status_code == 200:
+                return response.json()
             else:
-                print("Por favor, forneça um arquivo CSV ou XLSX válido.")
-                return
-
-            df["CPF"] = df["CPF"].str.replace(r"[^\d]", "", regex=True)
-
-            total_rows = len(df)
-            batches = [df.iloc[i:i + credit] for i in range(0, total_rows, credit)]
-
-            start_time = time.time()
-            requests_made = 0
-
-            with ThreadPoolExecutor(max_threads) as executor:
-                futures = {
-                    executor.submit(self.process_batch, batch, i + 1): i + 1
-                    for i, batch in enumerate(batches)
-                }
-                for future in as_completed(futures):
-                    batch_number = futures[future]
-                    try:
-                        future.result()
-                        requests_made += 1
-                    except Exception as e:
-                        print(f"Error processing batch {batch_number}: {e}")
-
-                    elapsed_time = time.time() - start_time
-                    if requests_made >= max_requests_per_minute:
-                        if elapsed_time < 60:
-                            time_to_wait = 60 - elapsed_time
-                            print(f"Atingido o limite de {max_requests_per_minute} requisições. Pausando por {time_to_wait:.2f} segundos.")
-                            time.sleep(time_to_wait)
-                        requests_made = 0
-                        start_time = time.time()
+                logger.error(f"Failed to fetch data. Status: {response.status_code}")
+                return None
 
         except Exception as e:
-            print(f"Error processing file: {e}")
+            logger.error(f"Error processing file: {e}", exc_info=True)
+            return None
 
-    def simulator_values(self):
-        ## todo falta implementar
-        # mock payload
-        paylaod = {
-            "cpf": "164.247.602-10",
-            "idConvenio": "184",
-            "matricula": "0847163"
-        }
-        url = f"{self.base_url}/consignado/v1/simulacao"
-        print("url", url)
-        response = requests.post(url, headers=self.auth_headers(), json=paylaod)
-        print(response.json())
-        # return response
-
-    def simulator_values_batch(self,): 
-        # todo falta implementar
-        ...
-
-    def extract_data_database(self, filter_column=None, filter_operator=None, filter_value=None):
+class BankerMaster:
+    def __init__(self):
+        """
+        Initialize a BankerMaster object.
+        """
+        self.url_token = os.getenv("URL_TOKEN")
+        self.payload_token = {"usuario": os.getenv("USERMASTER"), "senha": os.getenv("MASTERPASSWORD")}
+        self.response_token = requests.post(url=self.url_token, json=self.payload_token)
+        self.base_url = os.getenv("BASE_URL")
+        self.token = None
+    
+    def cheks_response_status(self):
+        """
+        Checks the status code of the token request response.
+        """
         try:
             session = Session()
-            data = session.query(APIResponse).all()
-            data_dict = [record.__dict__ for record in data]
-            
-            for record in data_dict:
-                record.pop('_sa_instance_state', None)
-
-            df = pd.DataFrame(data_dict)
-
-            if filter_column and filter_operator and filter_value is not None:
-                if filter_operator in ['>', '<', '>=', '<=', '==', '!=']:
-                    df = df.query(f"{filter_column} {filter_operator} @filter_value")
-                else:
-                    print(f"Operador inválido: {filter_operator}")
-
-            print(df.head())
-            
-            session.close()
-            return df
-
+            if self.response_token.status_code == 200:
+                self.token = self.response_token.json()["accessToken"]
+                token = Loggger(message=f"{self.token}", exception=None)
+                session.add(token)
+                session.commit()
+            else:
+                logger.error(f"Failed to fetch token. Status: {self.response_token.status_code}")
+                session.add(Loggger(exception=f"{logger.error(f'Failed to fetch token. Status: {self.response_token.status_code}')}"))
+                session.commit()
         except Exception as e:
-            print(f"Error processing file: {e}")
+            session.add(Loggger(exception=f"{logger.error(f'Error processing file: {e}')}"))
+        finally:
+            session.close()
+    
+    def auth_headers(self):
+        """
+        Returns the authentication headers containing the Bearer token.
+        If the token is not available in memory, it fetches the last saved token from the database.
+        """
+        if not self.token:
+            session = Session()
+            try:
+                last_log = session.query(Loggger).order_by(desc(Loggger.created_at)).first()
+                
+                if last_log and last_log.message:
+                    self.token = last_log.message
+                    logger.info("Token sucessfully recovered from the database.")
+                else:
+                    logger.warning("Token not found in the database.")
+                    return None
+            except Exception as e:
+                session.add(Loggger(exception=f"{logger.error(f'Error processing file: {e}')}"))
+                return None
+            finally:
+                session.close()
+        return {"Authorization": f"Bearer {self.token}", "User-Agent": "ASHER"}
 
-# if __name__ == "__main__":
-#     file_path = "/Users/hedrispereira/Desktop/fast-spreed-sheets/mocks/explore_analyze.csv"
-#     banker_master = BankerMaster(phone_columns="TELEFONE")
-#     banker_master.cheks_response_status()
-#     banker_master.extract_transform_load_users(file_path, credit=5000, max_threads=5)
-#     # banker_master.extract_data_database()
+    def search_id_convenio(self):
+        session = Session()
+        try:
+            cpfs = session.query(User.cpf).all()
+            for cpf in tqdm(cpfs, desc="Processing CPFs"):
+                self.cpf = cpf[0]
+                url = f"{self.base_url}/consignado/v1/cliente/consulta-cpf?={self.cpf}"
+                
+                response = UserAgentsRequests().agente_request(url=url, payload={}, headers=self.auth_headers(), method="GET")
+                if response is not None:
+                    id_convenio = response.get("idConvenio")
+                    
+                    if id_convenio:
+                        user = UserFinancialAgreements(cpf=self.cpf, id_convenio=id_convenio)
+                        session.add(user)
+                        session.commit()
+                        tqdm.write(f"Successfully saved CPF {self.cpf} with id_convenio {id_convenio} to the database.")
+                    else:
+                        tqdm.write(f"idConvenio not found in response for CPF {self.cpf}.")
+                        session.add(ReportGeneric(cpf=self.cpf, message="idConvenio not found in response.", id_convenio=None))
+                        session.commit()
+                else:
+                    tqdm.write(f"Failed to fetch data for CPF {self.cpf}.")
+                    session.add(ReportGeneric(cpf=self.cpf, message="Failed to fetch data.", id_convenio=None))
+                    session.commit()
+        except Exception as e:
+            tqdm.write(f"Error processing file: {e}")
+        finally:
+            session.close()
 
+    def get_limit_users(self):
+        """
+        Processing each line of the database and saving the user limits to the database.
+        """
+        session = Session()
 
+        try:
+            owners = session.query(UserFinancialAgreements).all()
+            
+            for owner in tqdm(owners, desc="Consult limit for cpf"):
+                cpf = owner.cpf
+                id_convenio = owner.id_convenio
+                url = f"{self.base_url}/consignado/v1/limite/consultar/{cpf}/{id_convenio}"                
+                response = UserAgentsRequests().agente_request(url=url, payload={}, headers=self.auth_headers(), method="GET")
+                
+                if response is not None:
+                    required_fields = [
+                        "cpf", "nome", "idConvenio", "matricula", "vlMultiploSaque", 
+                        "limiteUtilizado", "limiteTotal", "limiteDisponivel", "vlLimiteParcela", 
+                        "limiteParcelaUtilizado", "limiteParcelaDisponivel", "vlMargem", 
+                        "vlMultiploCompra", "vlLimiteCompra", "cdBanco", "cdAgencia", 
+                        "cdConta", "naoPerturbe", "saqueComplementar"
+                    ]
+                    
+                    if all(field in response for field in required_fields):
+                        limit = APIResponse(
+                            cpf=response.get("cpf"),
+                            nome=response.get("nome"),
+                            id_convenio=response.get("idConvenio"),
+                            matricula=response.get("matricula"),
+                            vl_multiplo_saque=response.get("vlMultiploSaque"),
+                            limite_utilizado=response.get("limiteUtilizado"),
+                            limite_total=response.get("limiteTotal"),
+                            limite_disponivel=response.get("limiteDisponivel"),
+                            vl_limite_parcela=response.get("vlLimiteParcela"),
+                            limite_parcela_utilizado=response.get("limiteParcelaUtilizado"),
+                            limite_parcela_disponivel=response.get("limiteParcelaDisponivel"),
+                            vl_margem=response.get("vlMargem"),
+                            vl_multiplo_compra=response.get("vlMultiploCompra"),
+                            vl_limite_compra=response.get("vlLimiteCompra"),
+                            cd_banco=response.get("cdBanco"),
+                            cd_agencia=response.get("cdAgencia"),
+                            cd_conta=response.get("cdConta"),
+                            nao_perturbe=response.get("naoPerturbe"),
+                            saque_complementar=response.get("saqueComplementar"),
+                            refinanciamento=response.get("contratoRefinanciamento", {}).get("refinanciamento"),
+                            numero_contrato=response.get("contratoRefinanciamento", {}).get("numeroContratos"),
+                            vlMaximoParcelas=response.get("contratoRefinanciamento", {}).get("vlMaximoParcela"),
+                            vlContrato=response.get("contratoRefinanciamento", {}).get("valor")
+                        )
+                        session.add(limit)
+                        session.commit()
+                        tqdm.write(f"Successfully saved limit for CPF {cpf}.")
+                    else:
+                        tqdm.write(f"Missing required fields in response for CPF {cpf}.")
+                        session.add(ReportGeneric(cpf=cpf, message="Missing required fields in response.",id_convenio=id_convenio))
+                        session.commit()
+                else:
+                    tqdm.write(f"Failed to fetch data for CPF {cpf}.")
+                    session.add(ReportGeneric(cpf=cpf, message="Failed to fetch data.", id_convenio=id_convenio))
+                    session.commit()
+                    
+        except Exception as e:
+            tqdm.write(f"Error processing file: {e}")
+        finally:
+            session.close()  # Fecha a sessão do banco de dados
 
-
-# example de como estava --> extract_transform_load_users
-# if file_path.endswith('.csv'):
-#     df = pd.read_csv(file_path, sep=";", dtype="object")
-# elif file_path.endswith('.xlsx'):
-#     df = pd.read_excel(file_path, dtype="object")
-# else:
-#     print("Please provide a valid CSV or XLSX file.")
-#     return
+    def trash(self, generic_report: bool, financial_agreements: bool, owners_cpf: bool, loogers: bool):
+        session = Session()        
+        try:
+            if generic_report:
+                session.query(ReportGeneric).delete()
+                session.commit()
+                logger.info("Report deleted successfully.")
+            
+            elif financial_agreements:
+                session.query(UserFinancialAgreements).delete()
+                session.commit()
+                logger.info("User FinancialAgreements deleted successfully.")
+            
+            elif owners_cpf:
+                session.query(User).delete()
+                session.commit()
+                logger.info("User deleted successfully.")
+                
+            elif loogers:
+                session.query(Loggger).delete()
+                session.commit()
+                logger.info("Loggers deleted successfully.")
+            
+        except Exception as e:
+            logger.error(f"Error processing file: {e}", exc_info=True)
+        finally:
+            session.close()

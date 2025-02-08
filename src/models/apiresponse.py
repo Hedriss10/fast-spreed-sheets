@@ -1,7 +1,8 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, JSON, TIMESTAMP, func, Boolean
+from sqlalchemy import Column, Integer, String, TIMESTAMP, Text
+from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, Float, JSON, TIMESTAMP, func, Boolean
 from sqlalchemy.orm import DeclarativeBase
-from controllers.datapaths import ManagePathDatabaseFiles
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,7 +14,6 @@ USERNAME = os.getenv("USERNAME")
 PASSWORD = os.getenv("DBPASSWORD")
 
 DATABASE_URL = f"postgresql://{USERNAME}:{PASSWORD}@{DBHOST}:{DBPORT}/{DATABASE}"
-# DATABASE_URL = f"sqlite:///{ManagePathDatabaseFiles().save_path_data()}/batch_processing.db"
 
 class Base(DeclarativeBase):
     pass
@@ -48,3 +48,36 @@ class APIResponse(Base):
     vlContrato = Column(Float)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
     updated_at = Column(TIMESTAMP, nullable=False, server_default=func.now(), onupdate=func.now())
+
+class Loggger(Base):
+    __tablename__ = 'loggers'
+    __table_args__ = {'schema': 'spreed_sheets'}
+    id = Column(Integer, primary_key=True)
+    message = Column(Text, nullable=False)
+    exception = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+
+class User(Base):
+    __tablename__ = 'owners_cpf'
+    __table_args__ = {'schema': 'spreed_sheets'}
+    id = Column(Integer, primary_key=True)
+    cpf = Column(Text, nullable=False)
+    
+    
+class UserFinancialAgreements(Base):
+    __tablename__ = 'financial_agreements'
+    __table_args__ = {'schema': 'spreed_sheets'}
+    id = Column(Integer, primary_key=True)
+    cpf = Column(Text, nullable=False)
+    id_convenio = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
+    
+    
+class ReportGeneric(Base):
+    __tablename__ = 'report_generic'
+    __table_args__ = {'schema': 'spreed_sheets'}
+    id = Column(Integer, primary_key=True)
+    cpf = Column(Text, nullable=False)
+    id_convenio = Column(Text, nullable=True)
+    message = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
