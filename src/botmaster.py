@@ -229,6 +229,7 @@ class BankerMaster:
                     
                     elif isinstance(response, dict) and response.get("message") == "Unauthorized":
                         tqdm.write(f"Unauthorized for CPF {self.cpf}. Refreshing token...")
+                        self.trash(generic_report=False, financial_agreements=False, owners_cpf=False, loggers=True)
                         self.cheks_response_status()
                         attempts += 1
 
@@ -297,6 +298,7 @@ class BankerMaster:
                     
                     elif isinstance(response, dict) and response.get("message") == "Unauthorized":
                         tqdm.write(f"Unauthorized for CPF {cpf}. Refreshing token...")
+                        self.trash(generic_report=False, financial_agreements=False, owners_cpf=False, loggers=True)
                         self.cheks_response_status()  # Renova o token
                         attempts += 1  # Incrementa a tentativa e reprocessa
 
