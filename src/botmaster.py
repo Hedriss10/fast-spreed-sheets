@@ -149,19 +149,20 @@ class BankerMaster:
         """
         self.url_token = os.getenv("URL_TOKEN")
         self.payload_token = {"usuario": os.getenv("USERMASTER"), "senha": os.getenv("MASTERPASSWORD")}
-        self.response_token = requests.post(url=self.url_token, json=self.payload_token)
         self.base_url = os.getenv("BASE_URL")
         self.token = None
     
-    def cheks_response_status(self):
+    def refresh_token(self):
         """
         Checks the status code of the token request response.
         """
+        session = Session()
         try:
-            session = Session()
-            if self.response_token.status_code == 200:
-                self.token = self.response_token.json()["accessToken"]
-                token = Loggger(message=f"{self.token}", exception=None)
+            response = requests.post(url=self.url_token, json=self.payload_token)
+            if response.status_code == 200:
+                response.json()["accessToken"]
+                print(response.text)
+                token = Loggger(message=f"{response.json()['accessToken']}", exception=None)
                 session.add(token)
                 session.commit()
             else:
@@ -205,7 +206,7 @@ class BankerMaster:
             cpfs = session.query(User.cpf).all()
             for cpf in tqdm(cpfs, desc="Processing CPFs"):
                 self.cpf = cpf[0]
-                url = f"{self.base_url}/consignado/v1/cliente/consulta-cpf?cpfRequest={self.cpf}"
+                url = f"{self.base_url}/consignado/v1/cliente/consulta-cpf?cpfRequest=47795867120"
 
                 max_retries = 2
                 attempts = 0  
@@ -230,7 +231,7 @@ class BankerMaster:
                     elif isinstance(response, dict) and response.get("message") == "Unauthorized":
                         tqdm.write(f"Unauthorized for CPF {self.cpf}. Refreshing token...")
                         self.trash(generic_report=False, financial_agreements=False, owners_cpf=False, loggers=True)
-                        self.cheks_response_status()
+                        self.refresh_token()
                         attempts += 1
 
                     else:
@@ -299,7 +300,7 @@ class BankerMaster:
                     elif isinstance(response, dict) and response.get("message") == "Unauthorized":
                         tqdm.write(f"Unauthorized for CPF {cpf}. Refreshing token...")
                         self.trash(generic_report=False, financial_agreements=False, owners_cpf=False, loggers=True)
-                        self.cheks_response_status()  # Renova o token
+                        self.refresh_token()  # Renova o token
                         attempts += 1  # Incrementa a tentativa e reprocessa
 
                     else:
