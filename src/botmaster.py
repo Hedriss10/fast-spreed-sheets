@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import requests
 import time
-import json
 
 from tqdm import tqdm
 from src.utils.log import setup_logger
@@ -11,8 +10,6 @@ from sqlalchemy import create_engine, desc
 from src.models.apiresponse import (APIResponse, 
     Base, DATABASE_URL, Loggger, User, UserFinancialAgreements, ReportGeneric
 )
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
 from datetime import datetime
 
