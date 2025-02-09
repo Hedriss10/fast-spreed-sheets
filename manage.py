@@ -48,7 +48,4 @@ if __name__ == "__main__":
             except Exception as e:
                 console.print(f"Erro ao executar a opção escolhida: {e}", style="bold red")
 
-    # interface()
-
-    banker_master = BankerMaster()
-    banker_master.refresh_token()
+    interface()
