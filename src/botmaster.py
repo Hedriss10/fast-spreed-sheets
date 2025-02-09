@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import requests
 import time
+import json
 
 from tqdm import tqdm
 from src.utils.log import setup_logger
@@ -101,9 +102,9 @@ class UserAgentsRequests:
         self.request_count = 0
         self.last_reset_time = time.time()
 
-    def agente_request(self, url: str, payload: dict, headers: dict, method: str):
+    def agente_request(self, url: str, headers: dict):
         """
-        Realiza uma requisição HTTP com controle de taxa.
+        Check the status code of the token request response.
 
         :param url: URL da requisição.
         :param payload: Dados a serem enviados na requisição.
@@ -120,20 +121,22 @@ class UserAgentsRequests:
             if self.request_count >= max_requests_per_minute:
                 elapsed_time = time.time() - self.last_reset_time
                 if elapsed_time < 60:
-                    sleep_time = 60 - elapsed_time
+                    sleep_time = 60
                     logger.info(f"Rate limit reached. Sleeping for {sleep_time} seconds.")
                     time.sleep(sleep_time)
                 self.request_count = 0
                 self.last_reset_time = time.time()
 
-            response = requests.request(method, url, headers=headers, json=payload)
+            response = requests.get(url, headers=headers)
             self.request_count += 1
 
             if response.status_code == 200:
                 return response.json()
+            elif response.status_code == 401:
+                return {'message': 'Unauthorized'}
             else:
                 logger.error(f"Failed to fetch data. Status: {response.status_code}")
-                return None
+                return response.json()
 
         except Exception as e:
             logger.error(f"Error processing file: {e}", exc_info=True)
@@ -180,7 +183,7 @@ class BankerMaster:
             try:
                 last_log = session.query(Loggger).order_by(desc(Loggger.created_at)).first()
                 
-                if last_log and last_log.message:
+                if last_log:
                     self.token = last_log.message
                     logger.info("Token sucessfully recovered from the database.")
                 else:
@@ -191,33 +194,49 @@ class BankerMaster:
                 return None
             finally:
                 session.close()
+                
         return {"Authorization": f"Bearer {self.token}", "User-Agent": "ASHER"}
 
     def search_id_convenio(self):
         session = Session()
+        agents_requests = UserAgentsRequests()
+        
         try:
             cpfs = session.query(User.cpf).all()
             for cpf in tqdm(cpfs, desc="Processing CPFs"):
                 self.cpf = cpf[0]
-                url = f"{self.base_url}/consignado/v1/cliente/consulta-cpf?={self.cpf}"
-                
-                response = UserAgentsRequests().agente_request(url=url, payload={}, headers=self.auth_headers(), method="GET")
-                if response is not None:
-                    id_convenio = response.get("idConvenio")
+                url = f"{self.base_url}/consignado/v1/cliente/consulta-cpf?cpfRequest={self.cpf}"
+
+                max_retries = 2
+                attempts = 0  
+
+                while attempts < max_retries:
+                    response = agents_requests.agente_request(url=url, headers=self.auth_headers())
+
+                    if response is not None and isinstance(response, list):
+                        for item in response:
+                            id_convenio = item.get("idConvenio")                    
+                            if id_convenio:
+                                user = UserFinancialAgreements(cpf=self.cpf, id_convenio=id_convenio)
+                                session.add(user)
+                                session.commit()
+                                tqdm.write(f"Successfully saved CPF {self.cpf} with id_convenio {id_convenio} to the database.")
+                            else:
+                                tqdm.write(f"idConvenio not found in response for CPF {self.cpf}.")
+                                session.add(ReportGeneric(cpf=self.cpf, message=f"{response}", id_convenio=None))
+                                session.commit()
+                        break
                     
-                    if id_convenio:
-                        user = UserFinancialAgreements(cpf=self.cpf, id_convenio=id_convenio)
-                        session.add(user)
-                        session.commit()
-                        tqdm.write(f"Successfully saved CPF {self.cpf} with id_convenio {id_convenio} to the database.")
+                    elif isinstance(response, dict) and response.get("message") == "Unauthorized":
+                        tqdm.write(f"Unauthorized for CPF {self.cpf}. Refreshing token...")
+                        self.cheks_response_status()
+                        attempts += 1
+
                     else:
-                        tqdm.write(f"idConvenio not found in response for CPF {self.cpf}.")
-                        session.add(ReportGeneric(cpf=self.cpf, message="idConvenio not found in response.", id_convenio=None))
+                        tqdm.write(f"Failed to fetch data for CPF {self.cpf}.")
+                        session.add(ReportGeneric(cpf=self.cpf, message=f"{response}", id_convenio=None))
                         session.commit()
-                else:
-                    tqdm.write(f"Failed to fetch data for CPF {self.cpf}.")
-                    session.add(ReportGeneric(cpf=self.cpf, message="Failed to fetch data.", id_convenio=None))
-                    session.commit()
+                        break 
         except Exception as e:
             tqdm.write(f"Error processing file: {e}")
         finally:
@@ -228,6 +247,7 @@ class BankerMaster:
         Processing each line of the database and saving the user limits to the database.
         """
         session = Session()
+        agents_requests = UserAgentsRequests()
 
         try:
             owners = session.query(UserFinancialAgreements).all()
@@ -236,61 +256,61 @@ class BankerMaster:
                 cpf = owner.cpf
                 id_convenio = owner.id_convenio
                 url = f"{self.base_url}/consignado/v1/limite/consultar/{cpf}/{id_convenio}"                
-                response = UserAgentsRequests().agente_request(url=url, payload={}, headers=self.auth_headers(), method="GET")
                 
-                if response is not None:
-                    required_fields = [
-                        "cpf", "nome", "idConvenio", "matricula", "vlMultiploSaque", 
-                        "limiteUtilizado", "limiteTotal", "limiteDisponivel", "vlLimiteParcela", 
-                        "limiteParcelaUtilizado", "limiteParcelaDisponivel", "vlMargem", 
-                        "vlMultiploCompra", "vlLimiteCompra", "cdBanco", "cdAgencia", 
-                        "cdConta", "naoPerturbe", "saqueComplementar"
-                    ]
+                max_retries = 2  # Número máximo de reprocessamentos
+                attempts = 0  
+
+                while attempts < max_retries:
+                    response = agents_requests.agente_request(url=url, headers=self.auth_headers())
+
+                    if response is not None and isinstance(response, list):
+                        for item in response:
+                            limit = APIResponse(
+                                cpf=item.get("cpf"),
+                                nome=item.get("nome"),
+                                id_convenio=item.get("idConvenio"),
+                                matricula=item.get("matricula"),
+                                vl_multiplo_saque=item.get("vlMultiploSaque"),
+                                limite_utilizado=item.get("limiteUtilizado"),
+                                limite_total=item.get("limiteTotal"),
+                                limite_disponivel=item.get("limiteDisponivel"),
+                                vl_limite_parcela=item.get("vlLimiteParcela"),
+                                limite_parcela_utilizado=item.get("limiteParcelaUtilizado"),
+                                limite_parcela_disponivel=item.get("limiteParcelaDisponivel"),
+                                vl_margem=item.get("vlMargem"),
+                                vl_multiplo_compra=item.get("vlMultiploCompra"),
+                                vl_limite_compra=item.get("vlLimiteCompra"),
+                                cd_banco=item.get("cdBanco"),
+                                cd_agencia=item.get("cdAgencia"),
+                                cd_conta=item.get("cdConta"),
+                                nao_perturbe=item.get("naoPerturbe"),
+                                saque_complementar=item.get("saqueComplementar"),
+                                refinanciamento=item.get("contratoRefinanciamento", {}).get("refinanciamento"),
+                                numero_contrato=item.get("contratoRefinanciamento", {}).get("numeroContratos"),
+                                vlMaximoParcelas=item.get("contratoRefinanciamento", {}).get("vlMaximoParcela"),
+                                vlContrato=item.get("contratoRefinanciamento", {}).get("valor")
+                            )
+                            session.add(limit)
+                            session.commit()
+                            tqdm.write(f"Successfully saved limit for CPF {cpf}.")
+                        break  # Sai do loop se a requisição for bem-sucedida
                     
-                    if all(field in response for field in required_fields):
-                        limit = APIResponse(
-                            cpf=response.get("cpf"),
-                            nome=response.get("nome"),
-                            id_convenio=response.get("idConvenio"),
-                            matricula=response.get("matricula"),
-                            vl_multiplo_saque=response.get("vlMultiploSaque"),
-                            limite_utilizado=response.get("limiteUtilizado"),
-                            limite_total=response.get("limiteTotal"),
-                            limite_disponivel=response.get("limiteDisponivel"),
-                            vl_limite_parcela=response.get("vlLimiteParcela"),
-                            limite_parcela_utilizado=response.get("limiteParcelaUtilizado"),
-                            limite_parcela_disponivel=response.get("limiteParcelaDisponivel"),
-                            vl_margem=response.get("vlMargem"),
-                            vl_multiplo_compra=response.get("vlMultiploCompra"),
-                            vl_limite_compra=response.get("vlLimiteCompra"),
-                            cd_banco=response.get("cdBanco"),
-                            cd_agencia=response.get("cdAgencia"),
-                            cd_conta=response.get("cdConta"),
-                            nao_perturbe=response.get("naoPerturbe"),
-                            saque_complementar=response.get("saqueComplementar"),
-                            refinanciamento=response.get("contratoRefinanciamento", {}).get("refinanciamento"),
-                            numero_contrato=response.get("contratoRefinanciamento", {}).get("numeroContratos"),
-                            vlMaximoParcelas=response.get("contratoRefinanciamento", {}).get("vlMaximoParcela"),
-                            vlContrato=response.get("contratoRefinanciamento", {}).get("valor")
-                        )
-                        session.add(limit)
-                        session.commit()
-                        tqdm.write(f"Successfully saved limit for CPF {cpf}.")
+                    elif isinstance(response, dict) and response.get("message") == "Unauthorized":
+                        tqdm.write(f"Unauthorized for CPF {cpf}. Refreshing token...")
+                        self.cheks_response_status()  # Renova o token
+                        attempts += 1  # Incrementa a tentativa e reprocessa
+
                     else:
-                        tqdm.write(f"Missing required fields in response for CPF {cpf}.")
-                        session.add(ReportGeneric(cpf=cpf, message="Missing required fields in response.",id_convenio=id_convenio))
+                        tqdm.write(f"Failed to fetch data for CPF {cpf}.")
+                        session.add(ReportGeneric(cpf=cpf, message=f"{response}", id_convenio=id_convenio))
                         session.commit()
-                else:
-                    tqdm.write(f"Failed to fetch data for CPF {cpf}.")
-                    session.add(ReportGeneric(cpf=cpf, message="Failed to fetch data.", id_convenio=id_convenio))
-                    session.commit()
-                    
+                        break  # Sai do loop se não for erro de autenticação
         except Exception as e:
             tqdm.write(f"Error processing file: {e}")
         finally:
-            session.close()  # Fecha a sessão do banco de dados
+            session.close()
 
-    def trash(self, generic_report: bool, financial_agreements: bool, owners_cpf: bool, loogers: bool):
+    def trash(self, generic_report: bool, financial_agreements: bool, owners_cpf: bool, loggers: bool):
         session = Session()        
         try:
             if generic_report:
@@ -308,7 +328,7 @@ class BankerMaster:
                 session.commit()
                 logger.info("User deleted successfully.")
                 
-            elif loogers:
+            elif loggers:
                 session.query(Loggger).delete()
                 session.commit()
                 logger.info("Loggers deleted successfully.")

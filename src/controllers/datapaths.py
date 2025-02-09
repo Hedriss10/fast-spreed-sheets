@@ -18,7 +18,7 @@ class ManagePathDatabaseFiles:
 
     def list_files_database(self):
         """
-        List all .xlsx and .csv files in the "data" directory.
+        List all .xlsx and .csv files in the "data" directory and return the first .csv or .xlsx file as a pandas DataFrame.
         """
         try:
             files = [
@@ -28,12 +28,15 @@ class ManagePathDatabaseFiles:
 
             if not files:
                 print("Nenhum arquivo .xlsx ou .csv encontrado na pasta 'data'.")
-                return []
+                return None
             
-            return files
+            first_file = files[0]
+            file_path = os.path.join(self.data_path, first_file)
+            return file_path
+        
         except Exception as e:
             print(f"Erro ao listar arquivos no banco de dados: {e}")
-            return []
+            return None
 
     def move_trash_files(self, move_trash: bool = False) -> None:
         """
