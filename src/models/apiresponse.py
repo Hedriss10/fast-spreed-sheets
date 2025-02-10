@@ -43,7 +43,7 @@ class APIResponse(Base):
     nao_perturbe = Column(Boolean) 
     saque_complementar = Column(Boolean) 
     refinanciamento = Column(JSON, nullable=False)
-    numero_contrato = Column(String(100))
+    numero_contrato = Column(Text)
     vlMaximoParcelas = Column(Float)
     vlContrato = Column(Float)
     created_at = Column(TIMESTAMP, nullable=False, server_default=func.now())
