@@ -32,6 +32,7 @@ if __name__ == "__main__":
                     if trasnformer.upper() == "S":
                         banker_master = BankerMaster()
                         banker_master.search_id_convenio()
+                        banker_master.get_limit_users() # get limit continue
                     elif transformer.upper() == "N":
                         banker_master = BankerMaster()
                         banker_master.get_limit_users()

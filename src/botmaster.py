@@ -151,48 +151,49 @@ class BankerMaster:
     
     def refresh_token(self):
         """
-        Checks the status code of the token request response.
+        Fetches a new authentication token and updates self.token.
         """
         session = Session()
         try:
             response = requests.post(url=self.url_token, json=self.payload_token)
             if response.status_code == 200:
-                response.json()["accessToken"]
-                print(response.text)
-                token = Loggger(message=f"{response.json()['accessToken']}", exception=None)
-                session.add(token)
-                session.commit()
+                new_token = response.json().get("accessToken")
+                if new_token:
+                    self.token = new_token  # Atualiza o token na instância
+                    log_entry = Loggger(message=new_token, exception=None)
+                    session.add(log_entry)
+                    session.commit()
+                    logger.info("Token successfully refreshed.")
+                else:
+                    logger.error("Token refresh response did not contain an access token.")
             else:
-                logger.error(f"Failed to fetch token. Status: {self.response_token.status_code}")
-                session.add(Loggger(exception=f"{logger.error(f'Failed to fetch token. Status: {self.response_token.status_code}')}"))
-                session.commit()
+                logger.error(f"Failed to fetch token. Status: {response.status_code}")
+
         except Exception as e:
-            session.add(Loggger(exception=f"{logger.error(f'Error processing file: {e}')}"))
+            logger.error(f"Error processing token refresh: {e}", exc_info=True)
         finally:
             session.close()
     
     def auth_headers(self):
         """
         Returns the authentication headers containing the Bearer token.
-        If the token is not available in memory, it fetches the last saved token from the database.
+        If the token is not available, it will fetch it from the database or refresh it.
         """
         if not self.token:
             session = Session()
             try:
                 last_log = session.query(Loggger).order_by(desc(Loggger.created_at)).first()
-                
                 if last_log:
                     self.token = last_log.message
-                    logger.info("Token sucessfully recovered from the database.")
+                    logger.info("Token successfully recovered from the database.")
                 else:
-                    logger.warning("Token not found in the database.")
-                    return None
+                    logger.warning("Token not found in the database. Fetching a new one.")
+                    self.refresh_token()  # Atualiza o token diretamente
             except Exception as e:
-                session.add(Loggger(exception=f"{logger.error(f'Error processing file: {e}')}"))
-                return None
+                logger.error(f"Error retrieving token from the database: {e}", exc_info=True)
             finally:
                 session.close()
-                
+        
         return {"Authorization": f"Bearer {self.token}", "User-Agent": "ASHER"}
 
     def search_id_convenio(self):
