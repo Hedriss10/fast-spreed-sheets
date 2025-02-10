@@ -28,8 +28,8 @@ if __name__ == "__main__":
                 
                 elif option == "2":
                     console.print("Executando Banker Master...", style="bold green")
-                    trasnformer = input("[bold green]Deseja buscar convenios? (S/N): [/bold green]")
-                    if trasnformer.upper() == "S":
+                    transformer = input("[bold green]Deseja buscar convenios? (S/N): [/bold green]")
+                    if transformer.upper() == "S":
                         banker_master = BankerMaster()
                         banker_master.search_id_convenio()
                         banker_master.get_limit_users() # get limit continue
