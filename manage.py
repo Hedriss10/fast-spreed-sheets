@@ -18,7 +18,7 @@ if __name__ == "__main__":
                     financialAgreements = input("Deseja processar dataframe sem convenio? (S/N): ")
                     if financialAgreements.upper() == "S":
                         files = ManagePathDatabaseFiles().list_files_database()
-                        transformer = ExtractTransformLoad(file_content=files, file_type="csv")
+                        transformer = ExtractTransformLoad(file_content=files, file_type="xlsx")
                         transformer.processing_dataframe()
                     else:
                         financialAgreements.upper() == "N"

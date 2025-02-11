@@ -50,10 +50,11 @@ class ExtractTransformLoad:
             else:
                 logger.info("Please provide a valid CSV or XLSX file.")
                 return
-            
+
             for index, row in tqdm(df.iterrows(), total=len(df)):
-                cpf = row["CPF"].replace(".", "").replace("-", "")
-                user = User(cpf=cpf)
+                cpf = row["cpf"].replace(".", "").replace("-", "")
+                phone = row["CELULAR"]                 
+                user = User(cpf=cpf, phone=phone)
                 session.add(user)
                 session.commit()
             logger.warning("Successfully saved CPFs to the database.")

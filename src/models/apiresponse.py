@@ -62,6 +62,7 @@ class User(Base):
     __table_args__ = {'schema': 'spreed_sheets'}
     id = Column(Integer, primary_key=True)
     cpf = Column(Text, nullable=False)
+    phone = Column(Text, nullable=True)
     
     
 class UserFinancialAgreements(Base):
